@@ -548,7 +548,7 @@ class Labwatch(object):
         self.sub_thread.start()
         
         self.error_state = False
-    
+        logger.info('zmq reading thread launched')
     def parse_syslog(self):
         while self.running:
             [name,severity,timestamp,status]=self.sub.recv_multipart()
@@ -564,8 +564,9 @@ class Labwatch(object):
                             if status_dict[identifier] in sensor['identifiers'][identifier]:
                                 # This message relates to our sensor, so now check what the alert level of the sensor is, and if the  value we care about is included then log it too
                                 # We only want to update the alert level if it is worse than the previously recorded one, this way if the problem goes away the message in BLACS will still say what went wrong, so the user knows why the queue was paused.
+                                
                                 self.update_value_from_syslog(sensor,status_dict,severity)
-                         
+                                logger.info('Sensor updated: %s'%sensor)
                     # if there are no identifiers for this host then I suppose we should treat all messages from the host as being related to the sensor                
                     if len(sensor['identifiers']) == 0:
                         self.update_value_from_syslog(sensor,status_dict,severity)
@@ -593,7 +594,7 @@ class Labwatch(object):
                     if sensor['status']['value'] not in state:
                         sensor['status']['level'] = -1
                         self.pause_queue()
-                elif sensor['status']['value'] != ensor['checks']['state']:
+                elif sensor['status']['value'] != sensor['checks']['state']:
                     sensor['status']['level'] = -1
                     self.pause_queue()
             if sensor['checks']['min']:
@@ -608,6 +609,7 @@ class Labwatch(object):
             # We've got a problem!
             self.error_state = True
     def stop(self):
+        logger.info('Stopping')
         self.running = False
     
 if __name__ == "__main__":
