@@ -20,6 +20,7 @@ import copy
 
 class ConnectionTable(object):    
     def __init__(self, h5file):
+        self.filepath = h5file
         self.logger = logging.getLogger('BLACS.ConnectionTable') 
         self.toplevel_children = {}
         self.logger.debug('Parsing connection table from %s'%h5file)
@@ -35,8 +36,8 @@ class ConnectionTable(object):
                     else:
                         self.table = np.array([])
                     for row in self.table:
-                        row = Row(row)
                         if row[3] == "None":
+                            row = Row(row)
                             self.toplevel_children[row[0]] = Connection(row[0],row[1],None,row[3],row[4],row[5],row[6],row[7],self.table)
                     try:
                         self.master_pseudoclock = table.attrs['master_pseudoclock']
@@ -195,8 +196,8 @@ class Connection(object):
         
         # Create children
         for row in table:
-            row = Row(row)
             if row[2] == self.name:
+                row = Row(row)
                 self.child_list[row[0]] = Connection(row[0],row[1],self,row[3],row[4],row[5],row[6],row[7],table)
         
     @property
