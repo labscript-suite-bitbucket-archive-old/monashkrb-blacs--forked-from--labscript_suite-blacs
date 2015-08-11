@@ -500,7 +500,10 @@ class Tab(object):
         if self.notebook:
             #currentpage = self.notebook.get_current_page()
             currentpage = self.notebook.indexOf(self._ui)
-            self.notebook.removeTab(currentpage)       
+            self.notebook.removeTab(currentpage)
+            temp_widget = QWidget()
+            self.notebook.insertTab(currentpage, temp_widget, self.device_name)
+            self.notebook.setCurrentWidget(temp_widget)  
         return currentpage
     
     def connect_restart_receiver(self,function):
@@ -522,19 +525,27 @@ class Tab(object):
         currentpage = self.close_tab()
         self.logger.info('***RESTART***')
         self.settings['saved_data'] = self.get_save_data()
-        inthread(self.wait_for_mainloop_to_stop, currentpage)
+        self._restart_thread = inthread(self.wait_for_mainloop_to_stop, currentpage)
         
     def wait_for_mainloop_to_stop(self, currentpage):
         self._mainloop_thread.join()
+        inmain(self.clean_ui_on_restart)
         inmain(self.finalise_restart, currentpage)
         
-    def finalise_restart(self, currentpage):
+    def clean_ui_on_restart(self):
         # Clean up UI
         ui = self._ui
         self._ui = None
         ui.setParent(None)
+        ui.deleteLater()
         del ui
         
+    def finalise_restart(self, currentpage):
+        widget = self.notebook.widget(currentpage)
+        widget.setParent(None)
+        widget.deleteLater()
+        del widget
+    
         # Note: the following function call will break if the user hasn't
         # overridden the __init__ function to take these arguments. So
         # make sure you do that!
