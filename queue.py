@@ -587,7 +587,7 @@ class QueueManager(object):
                 if timed_out or error_condition or abort or restarted:
                     # Pause the queue, re add the path to the top of the queue, and set a status message!
                     # only if we aren't responding to an abort click
-                    if not abort:
+                    if not abort and self.BLACS.master_BLACS:
                         self.manager_paused = True
                         self.prepend(path)                
                     if timed_out:
@@ -619,9 +619,15 @@ class QueueManager(object):
                     inmain(self._ui.queue_abort_button.clicked.disconnect,abort_function)
                     inmain(self._ui.queue_abort_button.setEnabled,False)
                     
+                    
+                    if not self.BLACS.master_BLACS:
+                        pass
+                        # TODO: Tell the master BLACS something went wrong
+                    
                     # Start a new iteration
                     continue
-                
+                    
+                    
             
             
                 ##########################################################################################################################################
