@@ -189,6 +189,7 @@ class BLACSWindow(QMainWindow):
     def event(self, event):
         result = QMainWindow.event(self, event)
         if event.type() == QEvent.WinIdChange:
+            # logger.info('BLACSWindow Event: WinIdChange. Id: %s'%str(self.effectiveWinId()))
             self.newWindow.emit(self.effectiveWinId())
         return result
 
@@ -421,6 +422,8 @@ class BLACS(object):
         # Connect the windows AppId stuff:
         if os.name == 'nt':
             self.ui.newWindow.connect(set_win_appusermodel)
+            # run the windows AppId stuff immediately anyway
+            set_win_appusermodel(self.ui.effectiveWinId())
 
         logger.info('showing UI')
         self.ui.show()
