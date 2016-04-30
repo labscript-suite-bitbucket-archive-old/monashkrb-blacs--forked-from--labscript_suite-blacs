@@ -28,6 +28,8 @@ else:
 
 import zprocess.locking, labscript_utils.h5_lock, h5py
 zprocess.locking.set_client_process_name('BLACS.queuemanager')
+from zprocess import zmq_get, ZMQServer
+import labscript_utils.shared_drive
 
 from qtutils import *
 
@@ -36,6 +38,27 @@ from connections import ConnectionTable
 from blacs.tab_base_classes import MODE_MANUAL, MODE_TRANSITION_TO_BUFFERED, MODE_TRANSITION_TO_MANUAL, MODE_BUFFERED  
 
 FILEPATH_COLUMN = 0
+
+class ExperimentServer(ZMQServer):
+
+    def __init__(self, queue, *args, **kwargs):
+        ZMQServer.__init__(self, *args, **kwargs)
+        self._logger = logging.getLogger('BLACS.ExperimentServer')  
+        self.queue = queue
+    
+    def handler(self, h5_filepath):
+        self._logger.info('Request handler received filepath: %s. Processing...'%h5_filepath)
+        message = self.process(h5_filepath)
+        self._logger.info('Request handler: %s ' % message.strip())
+        return message
+
+    @inmain_decorator(wait_for_return=True)
+    def process(self,h5_filepath):
+        # Convert path to local slashes and shared drive prefix:
+        self._logger.info('received filepath: %s'%h5_filepath)
+        h5_filepath = labscript_utils.shared_drive.path_to_local(h5_filepath)
+        self._logger.info('local filepath: %s'%h5_filepath)
+        return self.queue.process_request(h5_filepath)
 
 class QueueTreeview(QTreeView):
     def __init__(self,*args,**kwargs):
@@ -96,6 +119,11 @@ class QueueManager(object):
         self.master_pseudoclock = self.BLACS.connection_table.master_pseudoclock
         
         self._logger = logging.getLogger('BLACS.QueueManager')   
+        
+        # Start experiment server  
+        self._logger.info('Starting ExperimentSever')
+        port = int(self.BLACS.exp_config.get('ports','BLACS'))
+        self.experiment_server = ExperimentServer(self, port)        
         
         # Create listview model
         self._model = QStandardItemModel()
