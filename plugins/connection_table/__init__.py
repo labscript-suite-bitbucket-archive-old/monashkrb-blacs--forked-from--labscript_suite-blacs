@@ -23,7 +23,7 @@ else:
     from PyQt4.QtCore import *
     from PyQt4.QtGui import *
 
-from blacs.compile_and_restart import CompileAndRestart
+from .compile_and_restart import CompileAndRestart
 from labscript_utils.filewatcher import FileWatcher
 from qtutils import *
 

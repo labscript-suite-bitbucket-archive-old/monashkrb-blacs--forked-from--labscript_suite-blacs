@@ -650,7 +650,7 @@ if __name__ == '__main__':
                                         'BLACS.device_base_class',
                                         'BLACS.tab_base_classes',
                                         'BLACS.plugins.connection_table',
-                                        'BLACS.recompile_and_restart',
+                                        'BLACS.plugins.connection_table.compile_and_restart',
                                         'filewatcher',
                                         'queue',
                                         'notifications',

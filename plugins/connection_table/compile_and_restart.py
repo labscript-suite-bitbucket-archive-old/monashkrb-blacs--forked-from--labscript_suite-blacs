@@ -1,6 +1,6 @@
 #####################################################################
 #                                                                   #
-# /compile_and_restart.py                                           #
+# /plugins/connection_table/compile_and_restart.py                  #
 #                                                                   #
 # Copyright 2013, Monash University                                 #
 #                                                                   #
