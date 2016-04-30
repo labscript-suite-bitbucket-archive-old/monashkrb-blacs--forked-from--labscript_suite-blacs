@@ -70,9 +70,7 @@ check_version('labscript_devices', '2.0', '3')
 import zprocess.locking, labscript_utils.h5_lock, h5py
 zprocess.locking.set_client_process_name('BLACS')
 ###
-from zprocess import zmq_get, ZMQServer
 from setup_logging import setup_logging
-import labscript_utils.shared_drive
 
 # Custom Excepthook
 import labscript_utils.excepthook
@@ -218,7 +216,7 @@ class BLACSWindow(QMainWindow):
                 self.blacs.exiting = True
                 self.blacs.queue.manager_running = False
                 self.blacs.settings.close()
-                experiment_server.shutdown()
+                self.blacs.queue.experiment_server.shutdown()
                 for module_name, plugin in self.blacs.plugins.items():
                     try:
                         plugin.close()
@@ -624,20 +622,7 @@ class BLACS(object):
     def on_open_preferences(self,*args,**kwargs):
         self.settings.create_dialog()
 
-class ExperimentServer(ZMQServer):
-    def handler(self, h5_filepath):
-        print h5_filepath
-        message = self.process(h5_filepath)
-        logger.info('Request handler: %s ' % message.strip())
-        return message
 
-    @inmain_decorator(wait_for_return=True)
-    def process(self,h5_filepath):
-        # Convert path to local slashes and shared drive prefix:
-        logger.info('received filepath: %s'%h5_filepath)
-        h5_filepath = labscript_utils.shared_drive.path_to_local(h5_filepath)
-        logger.info('local filepath: %s'%h5_filepath)
-        return app.queue.process_request(h5_filepath)
 
 
 if __name__ == '__main__':
@@ -682,11 +667,6 @@ if __name__ == '__main__':
                               "ports":["BLACS", "lyse"],
                              }
     exp_config = LabConfig(config_path,required_config_params)
-
-    port = int(exp_config.get('ports','BLACS'))
-
-    # Start experiment server
-    experiment_server = ExperimentServer(port)
 
     # Create Connection Table object
     logger.info('About to load connection table: %s'%exp_config.get('paths','connection_table_h5'))
