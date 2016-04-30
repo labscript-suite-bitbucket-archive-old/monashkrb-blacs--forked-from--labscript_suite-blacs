@@ -45,11 +45,21 @@ class AnalysisSubmission(object):
         self._ui.server.editingFinished.connect(lambda: self._set_server(self._ui.server.text()))
         
         self._waiting_for_submission = []
-        self.mainloop_thread = threading.Thread(target=self.mainloop)
+        
+        # Handle case where we want to ignore file submission if runnig a secondary control system
+        if self.BLACS.master_BLACS:        
+            mainloop_target = self.mainloop
+            checking_target = self.check_connectivity_loop
+        else:
+            self._ui.hide()
+            mainloop_target = self.dummy_mainloop
+            checking_target = lambda: 0
+            
+        self.mainloop_thread = threading.Thread(target=mainloop_target)
         self.mainloop_thread.daemon = True
         self.mainloop_thread.start()
         
-        self.checking_thread = threading.Thread(target=self.check_connectivity_loop)
+        self.checking_thread = threading.Thread(target=checking_target)
         self.checking_thread.daemon = True
         self.checking_thread.start()
     
@@ -117,7 +127,11 @@ class AnalysisSubmission(object):
     
     def get_queue(self):
         return self.inqueue
-                 
+    
+    def dummy_mainloop(self):
+        while True:
+            signal, data = self.inqueue.get()
+    
     def mainloop(self):
         self._mainloop_logger = logging.getLogger('BLACS.AnalysisSubmission.mainloop') 
         while True:

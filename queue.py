@@ -141,6 +141,10 @@ class QueueManager(object):
         self._ui.queue_push_to_top.clicked.connect(self._move_top)
         self._ui.queue_push_to_bottom.clicked.connect(self._move_bottom)
         
+        # get required information about secondary control systems
+        self._secondary_control_devices = self.BLACS.connection_table.get_all_devices_attached_to_secondary_control_systems()
+        
+        
         self.manager = threading.Thread(target = self.manage)
         self.manager.daemon=True
         self.manager.start()
@@ -492,6 +496,7 @@ class QueueManager(object):
                 error_condition = False
                 abort = False
                 restarted = False
+                device_missing = False
                 self.set_status(now_running_text+"<br>Transitioning to Buffered")
                 
                 # Enable abort button, and link in current_queue:
@@ -502,22 +507,35 @@ class QueueManager(object):
                 with h5py.File(path,'r') as hdf5_file:
                     h5_file_devices = hdf5_file['devices/'].keys()
                 
-                for name in h5_file_devices: 
-                    try:
-                        # Connect restart signal from tabs to current_queue and transition the device to buffered mode
-                        success = self.transition_device_to_buffered(name,transition_list,path,restart_function)
-                        if not success:
-                            logger.error('%s has an error condition, aborting run' % name)
+                # verify that all h5_file_devices are controlled by some sort of control system
+                if self.BLACS.master_BLACS:
+                    for name in h5_file_devices:
+                        if name not in self.BLACS.attached_devices and name not in self._secondary_control_devices:
+                            logger.error('Device %s does not appear to be controlled by any control system. Aborting run.'%name)
+                            device_missing = True
+                            break                        
+                
+                if not device_missing:
+                    for name in h5_file_devices: 
+                        # ignore devices not controlled by this control system
+                        if name not in self.BLACS.attached_devices:
+                            continue
+                            
+                        try:
+                            # Connect restart signal from tabs to current_queue and transition the device to buffered mode
+                            success = self.transition_device_to_buffered(name,transition_list,path,restart_function)
+                            if not success:
+                                logger.error('%s has an error condition, aborting run' % name)
+                                error_condition = True
+                                break
+                        except Exception as e:
+                            logger.error('Exception while transitioning %s to buffered mode. Exception was: %s'%(name,str(e)))
                             error_condition = True
                             break
-                    except Exception as e:
-                        logger.error('Exception while transitioning %s to buffered mode. Exception was: %s'%(name,str(e)))
-                        error_condition = True
-                        break
-                        
+                            
                 devices_in_use = transition_list.copy()
 
-                while transition_list and not error_condition:
+                while transition_list and not error_condition and not device_missing:
                     try:
                         # Wait for a device to transtition_to_buffered:
                         logger.debug('Waiting for the following devices to finish transitioning to buffered mode: %s'%str(transition_list))
@@ -578,6 +596,8 @@ class QueueManager(object):
                         self.set_status("Shot aborted")
                     elif restarted:
                         self.set_status('A device was restarted during transition_to_buffered. Shot aborted')
+                    elif device_missing:
+                        self.set_status('Device %s does not seem to be managed by any control system. Shot aborted'%name)
                     else:
                         self.set_status("One or more devices is in an error state. Queue Paused...")
                         
@@ -617,6 +637,11 @@ class QueueManager(object):
                 logger.debug('About to start the master pseudoclock')
                 run_time = time.localtime()
                 #TODO: fix potential race condition if BLACS is closing when this line executes?
+                if self.BLACS.master_BLACS:
+                    if self.master_pseudoclock not in self.BLACS.tablist:
+                        logger.debug('The master pseudoclock must be connected to the primary BLACS control software')
+                        # TODO: Make it put a nice message in the Queue Manager status
+                        raise Exception('Master pseudoclock not connected to master BLACS')
                 self.BLACS.tablist[self.master_pseudoclock].start_run(experiment_finished_queue)
                 
                                                 
@@ -658,9 +683,10 @@ class QueueManager(object):
                 inmain(self._ui.queue_abort_button.clicked.disconnect,abort_function)
                 inmain(self._ui.queue_abort_button.setEnabled,False)
                 
-                if restarted:                    
-                    self.manager_paused = True
-                    self.prepend(path)  
+                if restarted:
+                    if self.BLACS.master_BLACS:
+                        self.manager_paused = True
+                        self.prepend(path)  
                     self.set_status("Device restarted mid-shot. Shot aborted, Queue paused.")
                 elif abort:
                     self.set_status("Shot aborted")
@@ -674,19 +700,20 @@ class QueueManager(object):
             # End try/except block here
             except Exception:
                 logger.exception("Error in queue manager execution. Queue paused.")
-                # clean up the h5 file
-                self.manager_paused = True
-                # clean the h5 file:
-                self.clean_h5_file(path, 'temp.h5')
-                try:
-                    os.remove(path)
-                    os.rename('temp.h5', path)
-                except WindowsError if platform.system() == 'Windows' else None:
-                    logger.warning('Couldn\'t delete failed run file %s, another process may be using it. Using alternate filename for second attempt.'%path)
-                    os.rename('temp.h5', path.replace('.h5','_retry.h5'))
-                    path = path.replace('.h5','_retry.h5')
-                # Put it back at the start of the queue:
-                self.prepend(path)
+                if self.BLACS.master_BLACS:
+                    # clean up the h5 file
+                    self.manager_paused = True
+                    # clean the h5 file:
+                    self.clean_h5_file(path, 'temp.h5')
+                    try:
+                        os.remove(path)
+                        os.rename('temp.h5', path)
+                    except WindowsError if platform.system() == 'Windows' else None:
+                        logger.warning('Couldn\'t delete failed run file %s, another process may be using it. Using alternate filename for second attempt.'%path)
+                        os.rename('temp.h5', path.replace('.h5','_retry.h5'))
+                        path = path.replace('.h5','_retry.h5')
+                    # Put it back at the start of the queue:
+                    self.prepend(path)
                 
                 # Need to put devices back in manual mode
                 self.current_queue = Queue.Queue()
@@ -715,12 +742,15 @@ class QueueManager(object):
             ##########################################################################################################################################
             # start new try/except block here                   
             try:
-                with h5py.File(path,'r+') as hdf5_file:
-                    self.BLACS.front_panel_settings.store_front_panel_in_h5(hdf5_file,states,tab_positions,window_data,plugin_data,save_conn_table = False)
-                with h5py.File(path,'r+') as hdf5_file:
-                    data_group = hdf5_file['/'].create_group('data')
-                    # stamp with the run time of the experiment
-                    hdf5_file.attrs['run time'] = time.strftime('%Y%m%dT%H%M%S',run_time)
+                # TODO: We should append the data from secondary control systems
+                #       (currently we are only saving the front panel of the primary control system)
+                if self.BLACS.master_BLACS:
+                    with h5py.File(path,'r+') as hdf5_file:
+                        self.BLACS.front_panel_settings.store_front_panel_in_h5(hdf5_file,states,tab_positions,window_data,plugin_data,save_conn_table = False)
+                    with h5py.File(path,'r+') as hdf5_file:
+                        data_group = hdf5_file['/'].create_group('data')
+                        # stamp with the run time of the experiment
+                        hdf5_file.attrs['run time'] = time.strftime('%Y%m%dT%H%M%S',run_time)
         
                 # A Queue for event-based notification of when the devices have transitioned to static mode:
                 # Shouldn't need to recreate the queue: self.current_queue = Queue.Queue()    
@@ -764,19 +794,20 @@ class QueueManager(object):
                                        
             except Exception as e:
                 logger.exception("Error in queue manager execution. Queue paused.")
-                # clean up the h5 file
-                self.manager_paused = True
-                # clean the h5 file:
-                self.clean_h5_file(path, 'temp.h5')
-                try:
-                    os.remove(path)
-                    os.rename('temp.h5', path)
-                except WindowsError if platform.system() == 'Windows' else None:
-                    logger.warning('Couldn\'t delete failed run file %s, another process may be using it. Using alternate filename for second attempt.'%path)
-                    os.rename('temp.h5', path.replace('.h5','_retry.h5'))
-                    path = path.replace('.h5','_retry.h5')
-                # Put it back at the start of the queue:
-                self.prepend(path)
+                if self.BLACS.master_BLACS:
+                    # clean up the h5 file
+                    self.manager_paused = True
+                    # clean the h5 file:
+                    self.clean_h5_file(path, 'temp.h5')
+                    try:
+                        os.remove(path)
+                        os.rename('temp.h5', path)
+                    except WindowsError if platform.system() == 'Windows' else None:
+                        logger.warning('Couldn\'t delete failed run file %s, another process may be using it. Using alternate filename for second attempt.'%path)
+                        os.rename('temp.h5', path.replace('.h5','_retry.h5'))
+                        path = path.replace('.h5','_retry.h5')
+                    # Put it back at the start of the queue:
+                    self.prepend(path)
                 
                 # Need to put devices back in manual mode. Since the experiment is over before this try/except block begins, we can 
                 # safely call transition_to_manual() on each device tab
@@ -794,8 +825,10 @@ class QueueManager(object):
             #                                                        Analysis Submission                                                             #
             ########################################################################################################################################## 
             logger.info('All devices are back in static mode.')  
-            # Submit to the analysis server
-            self.BLACS.analysis_submission.get_queue().put(['file', path])
+            
+            if self.BLACS.master_BLACS:
+                # Submit to the analysis server
+                self.BLACS.analysis_submission.get_queue().put(['file', path])
              
             ##########################################################################################################################################
             #                                                        Repeat Experiment?                                                              #

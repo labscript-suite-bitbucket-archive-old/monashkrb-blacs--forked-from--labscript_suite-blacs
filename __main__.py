@@ -263,7 +263,10 @@ class BLACS(object):
 
         # Find which devices are connected to BLACS, and what their labscript class names are:
         logger.info('finding connected devices in connection table')
-        self.attached_devices = self.connection_table.get_attached_devices()
+        hostname = socket.gethostname()
+        self.attached_devices = self.connection_table.get_attached_devices(hostname)
+        self.secondary_control_system_name = self.connection_table.get_name_if_secondary_control_system(hostname)
+        self.master_BLACS = True if self.secondary_control_system_name is None else False
 
         # Store the panes in a dictionary for easy access
         self.panes['tab_top_vertical_splitter'] = self.ui.tab_top_vertical_splitter
@@ -329,10 +332,14 @@ class BLACS(object):
         plugin_settings = eval(tab_data['BLACS settings']['plugin_data']) if 'plugin_data' in tab_data['BLACS settings'] else {}
         for module_name, module in plugins.modules.items():
             try:
-                # instantiate the plugin
-                self.plugins[module_name] = module.Plugin(plugin_settings[module_name] if module_name in plugin_settings else {})
+                # only load the plugin for secondary control systems if it has been explicitly configured to work with them
+                if (not self.master_BLACS and hasattr(module.Plugin, 'can_run_with_secondary_control_system') and module.Plugin.can_run_with_secondary_control_system) or self.master_BLACS:   
+                    # instantiate the plugin                 
+                    self.plugins[module_name] = module.Plugin(plugin_settings[module_name] if module_name in plugin_settings else {})
+                else:
+                    logger.info('Plugin %s not available for use in secondary control systems. Please use the plugin from the master copy of BLACS'%module_name)
             except Exception:
-                logger.exception('Could not instantiate plugin \'%s\'. Skipping')
+                logger.exception('Could not instantiate plugin \'%s\'. Skipping'%module_name)
 
         blacs_data = {'exp_config':self.exp_config,
                       'ui':self.ui,
