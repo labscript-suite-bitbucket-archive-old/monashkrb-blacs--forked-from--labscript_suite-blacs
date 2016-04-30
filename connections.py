@@ -18,7 +18,10 @@ import labscript_utils.excepthook
 import numpy as np
 import copy
 
-class ConnectionTable(object):    
+class ConnectionTable(object):  
+    
+    secondary_control_system_delimeter = '|'
+    
     def __init__(self, h5file):
         self.filepath = h5file
         self.logger = logging.getLogger('BLACS.ConnectionTable') 
@@ -35,10 +38,17 @@ class ConnectionTable(object):
                         self.table = np.array(table)
                     else:
                         self.table = np.array([])
+                        
+                    # create list of secondary control systems
+                    self.secondary_control_systems = []                    
+                    for device in self.table:
+                        if device['BLACS_connection'] and device['class'] == 'SecondaryControlSystem':
+                            self.secondary_control_systems.append(device['name'])
+                        
                     for row in self.table:
                         if row[3] == "None":
                             row = Row(row)
-                            self.toplevel_children[row[0]] = Connection(row[0],row[1],None,row[3],row[4],row[5],row[6],row[7],self.table)
+                            self.toplevel_children[row[0]] = Connection(row[0],row[1],None,row[3],row[4],row[5],row[6],row[7],self.table, self.secondary_control_systems)
                     try:
                         self.master_pseudoclock = table.attrs['master_pseudoclock']
                     except:
@@ -112,20 +122,63 @@ class ConnectionTable(object):
             print key
             value.print_details('    ')
     
-    def get_attached_devices(self):
+    def get_name_if_secondary_control_system(self, hostname):
+        this_secondary_control_system_name = None            
+        for secondary_control_system in self.secondary_control_systems:
+            connection = self.find_by_name(secondary_control_system)
+            if connection.properties['local_hostname'] == hostname:
+                # current_BLACS_is_secondary_control_system = True
+                this_secondary_control_system_name = secondary_control_system
+                break
+                
+        return this_secondary_control_system_name
+        
+    def get_attached_devices(self, hostname):
         """Finds out which devices in the connection table are
-        connected to BLACS, based on whether their 'BLACS_connection'
-        attribute is non-empty. Returns a dictionary of them in the form
-        {device_instance_name: labscript_class_name}"""
+        connected to this copy of BLACS, based on whether their 
+        'BLACS_connection' attribute is non-empty. Returns a dictionary of 
+        them in the form {device_instance_name: labscript_class_name}"""
+        attached_devices = {}
+        this_secondary_control_system_name = self.get_name_if_secondary_control_system(hostname)        
+                        
+        for device in self.table:
+            if device['BLACS_connection']:
+                # The device is connected to BLACS.
+                
+                # is it connected to this copy of BLACS?
+                attached_to_secondary_control_system = False
+                if self.secondary_control_system_delimeter in device['BLACS_connection']:
+                    secondary_control_name = device['BLACS_connection'].split(self.secondary_control_system_delimeter)[0]
+                    if secondary_control_name in secondary_control_systems:
+                        attached_to_secondary_control_system = True
+                        
+                # if 
+                #    the device is attached to this secondary control system
+                # OR
+                #    the device is not attached to a secondary control system and this is the master system
+                if (attached_to_secondary_control_system and this_secondary_control_system_name is not None and secondary_control_name == this_secondary_control_system_name) or (this_secondary_control_system_name is None and not attached_to_secondary_control_system):                
+                    # What's it's name, and it's labscript class name?
+                    # What's its labscript class name?
+                    instance_name = device['name']
+                    labscript_device_class_name = device['class']
+                    attached_devices[instance_name] = labscript_device_class_name
+                    
+        return attached_devices
+        
+    def get_all_devices_attached_to_secondary_control_systems(self):
         attached_devices = {}
         for device in self.table:
             if device['BLACS_connection']:
                 # The device is connected to BLACS.
-                # What's it's name, and it's labscript class name?
-                # What's its labscript class name?
-                instance_name = device['name']
-                labscript_device_class_name = device['class']
-                attached_devices[instance_name] = labscript_device_class_name
+                
+                # is it connected to this copy of BLACS?
+                if self.secondary_control_system_delimeter in device['BLACS_connection']:
+                    secondary_control_name = device['BLACS_connection'].split(self.secondary_control_system_delimeter)[0]
+                    if secondary_control_name in secondary_control_systems:
+                        instance_name = device['name']
+                        labscript_device_class_name = device['class']
+                        attached_devices[instance_name] = labscript_device_class_name
+                    
         return attached_devices
         
     # Returns the "Connection" object which is a child of "device_name", connected via "parent_port"
@@ -172,7 +225,7 @@ class Row(object):
     
 class Connection(object):
     
-    def __init__(self, name, device_class, parent, parent_port, unit_conversion_class, unit_conversion_params, BLACS_connection, properties, table):
+    def __init__(self, name, device_class, parent, parent_port, unit_conversion_class, unit_conversion_params, BLACS_connection, properties, table, secondary_control_systems):
         self.child_list = {}
         self.name = name
         self.device_class = device_class
@@ -186,7 +239,18 @@ class Connection(object):
         else:
             self._unit_conversion_params = eval(unit_conversion_params)
             
-        self.BLACS_connection = BLACS_connection
+        
+        if ConnectionTable.secondary_control_system_delimeter in BLACS_connection:
+            BLACS_connection_parts = BLACS_connection.split(ConnectionTable.secondary_control_system_delimeter)[0]
+            if BLACS_connection_parts[0] in secondary_control_systems:
+                self.attached_to_secondary_control_system = BLACS_connection_parts[0]
+                self.BLACS_connection = '|'.join(BLACS_connection_parts[1:])
+            else:
+                self.attached_to_secondary_control_system = None
+                self.BLACS_connection = BLACS_connection
+        else:
+            self.attached_to_secondary_control_system = None
+            self.BLACS_connection = BLACS_connection
         
         # DEPRECATED: backwards compatibility for old way of storing properties in connection table
         if properties.startswith(labscript_utils.properties.JSON_IDENTIFIER):
@@ -198,7 +262,7 @@ class Connection(object):
         for row in table:
             if row[2] == self.name:
                 row = Row(row)
-                self.child_list[row[0]] = Connection(row[0],row[1],self,row[3],row[4],row[5],row[6],row[7],table)
+                self.child_list[row[0]] = Connection(row[0],row[1],self,row[3],row[4],row[5],row[6],row[7],table,secondary_control_systems)
         
     @property
     def unit_conversion_params(self):
@@ -226,6 +290,8 @@ class Connection(object):
             error["unit_conversion_class"] = True
         if self.unit_conversion_params != other_connection.unit_conversion_params:
             error["unit_conversion_params"] = True
+        if self.attached_to_secondary_control_system != other_connection.attached_to_secondary_control_system:
+            error["attached_to_secondary_control_system"] = True
         if self.BLACS_connection != other_connection.BLACS_connection:
             error["BLACS_connection"] = True
         if self.properties != other_connection.properties:
