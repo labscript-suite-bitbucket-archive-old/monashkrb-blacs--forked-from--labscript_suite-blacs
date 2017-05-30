@@ -561,7 +561,7 @@ class Labwatch(object):
                 for sensor in self.monitor_list[name].values():
                     for identifier in sensor['identifiers'].keys():
                         if status_dict.has_key(identifier):
-                            if status_dict[identifier] in sensor['identifiers'][identifier]:
+                            if status_dict[identifier] == sensor['identifiers'][identifier]:
                                 # This message relates to our sensor, so now check what the alert level of the sensor is, and if the  value we care about is included then log it too
                                 # We only want to update the alert level if it is worse than the previously recorded one, this way if the problem goes away the message in BLACS will still say what went wrong, so the user knows why the queue was paused.
                                 
