@@ -577,8 +577,10 @@ class Labwatch(object):
                     for sensor_name,sensor_data in host.iteritems():
                         if sensor_data['status']['level'] < 4:
                             notification_message += "%s is (or was) in %s state. Latest value is %s.\n" %(sensor_name,self.errorlevels[sensor_data['status']['level']], sensor_data['status']['value'])
-                inmain(self.notification_text_widget.setText,notification_message)
-                self.show_notification()
+                # Sometimes the above code seems to run even once there is no error, meaning that a notification box pops up with nothing in it. Hopefully the following will stop that!
+                if notification_message:
+                    inmain(self.notification_text_widget.setText,notification_message)
+                    self.show_notification()
             
     def update_value_from_syslog(self,sensor,status_dict,severity):
         if severity < sensor['status']['level']:
