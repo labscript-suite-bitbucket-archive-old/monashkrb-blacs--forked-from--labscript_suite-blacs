@@ -12,16 +12,7 @@
 #####################################################################
 
 import logging
-import os
 import gc
-import sys
-
-if 'PySide' in sys.modules.copy():
-    from PySide.QtCore import *
-    from PySide.QtGui import *
-else:
-    from PyQt4.QtCore import *
-    from PyQt4.QtGui import *
 
 from labscript_utils import memprof
 
@@ -73,14 +64,17 @@ class Menu(object):
     def get_menu_items(self):
         return {'name':name,        
                 'menu_items':[{'name':'Garbage collect',
-                               'action':gc.collect
+                               'action':gc.collect,
+                               'icon': ':/qtutils/fugue/memory'
                               },
                               {'name':'Reset profiler',
-                               'action':memprof.start                              
+                               'action':memprof.start,
+                               'icon': ':/qtutils/fugue/counter-reset'
                               },
                               {'name':'Diff memory usage',
-                               'action':memprof.check                              
+                               'action':memprof.check,
+                               'icon': ':/qtutils/fugue/tables'
                               }
                              ]                                
                }
-    
+    
