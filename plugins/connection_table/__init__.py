@@ -16,12 +16,9 @@ import os
 import subprocess
 import sys
 
-if 'PySide' in sys.modules.copy():
-    from PySide.QtCore import *
-    from PySide.QtGui import *
-else:
-    from PyQt4.QtCore import *
-    from PyQt4.QtGui import *
+from qtutils.qt.QtCore import *
+from qtutils.qt.QtGui import *
+from qtutils.qt.QtWidgets import *
 
 from blacs.compile_and_restart import CompileAndRestart
 from labscript_utils.filewatcher import FileWatcher
@@ -79,13 +76,16 @@ class Menu(object):
     def get_menu_items(self):
         return {'name':name,        
                 'menu_items':[{'name':'Edit',
-                               'action':self.on_edit_connection_table
+                               'action':self.on_edit_connection_table,
+                               'icon': ':/qtutils/fugue/document--pencil'
                               },
                               {'name':'Select Globals',
-                               'action':self.on_select_globals                              
+                               'action':self.on_select_globals,
+                               'icon': ':/qtutils/fugue/table--pencil'
                               },
                               {'name':'Recompile',
-                               'action':self.on_recompile_connection_table                              
+                               'action':self.on_recompile_connection_table,
+                               'icon': ':/qtutils/fugue/arrow-circle'
                               }
                              ]                                
                }
