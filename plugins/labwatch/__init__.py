@@ -55,7 +55,7 @@ class Plugin(object):
     def set_notification_instances(self,notifications):
         self.notifications = notifications
         
-    def plugin_setup_complete(self):
+    def plugin_setup_complete(self,blacs_data):
         self.notifications[Notification].setup_labwatch()
         
 
@@ -534,7 +534,7 @@ class Labwatch(object):
         self.sub = ctx.socket(zmq.SUB)
         
         for name in monitor_list.keys():
-            self.sub.setsockopt(zmq.SUBSCRIBE,name)
+            self.sub.setsockopt(zmq.SUBSCRIBE,name.encode())
         logger.info('connecting to zmq server')
         self.sub.connect('tcp://%s:%s'%(zmq_server,zmq_port))
         
